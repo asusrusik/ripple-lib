@@ -113,6 +113,38 @@ class RippleAPI extends EventEmitter {
       this.connection = new RestrictedConnection(null, options)
     }
   }
+
+  async request(command: string, props: Object) {
+    return this.connection.request({
+      ...props,
+      command
+    })
+  }
+
+  async requestAll(command: string, props: Object, limit?: {max: number, collect: string}) {
+    // If limit wasn't provided, return a single request (but in the requestAll format)
+    if (!limit) {
+      return [await this.request(command, props)]
+    }
+    const results = []
+    let count = 0
+    let lastBatchLength
+    let marker
+    while (count < limit.max && lastBatchLength !== 0) {
+      const limitRemaining = limit.max - count
+      const repeatProps = {
+        ...props,
+        limit: limitRemaining,
+        marker
+      }
+      const singleResult = await this.request(command, repeatProps)
+      marker = singleResult.marker
+      count += singleResult[limit.collect].length
+      lastBatchLength = singleResult[limit.collect].length
+      results.push(singleResult)
+    }
+    return results
+  }
 }
 
 _.assign(RippleAPI.prototype, {
