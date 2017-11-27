@@ -1,7 +1,14 @@
 
-import {Amount, LaxLaxAmount, RippledAmount, Adjustment, MaxAdjustment,
+import {Amount, RippledAmount, Adjustment, MaxAdjustment,
   MinAdjustment} from '../common/types'
 
+// Amount where counterparty and value are optional
+export type LaxLaxAmount = {
+  currency: string,
+  value?: string,
+  issuer?: string,
+  counterparty?: string
+}
 
 export type Path = {
   source: Adjustment | MaxAdjustment,

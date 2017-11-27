@@ -43,6 +43,10 @@ import getLedger from './ledger/ledger'
 import RangeSet from './common/rangeset'
 import * as ledgerUtils from './ledger/utils'
 import * as schemaValidator from './common/schema-validator'
+import {
+  RippledCommandMap, RippledCommand,
+  RippledCommandReturnManyMap, RippledCommandReturnMany
+} from './common/types/commands'
 
 type APIOptions = {
   server?: string,
@@ -50,6 +54,21 @@ type APIOptions = {
   trace?: boolean,
   proxy?: string,
   timeout?: number
+}
+
+/**
+ * Get the response key / property name that contains the listed data for a
+ * command. This varies from command to command, but we need to know it to
+ * properly count across many requests.
+ */
+function getCollectKeyFromCommand(command: string): string|undefined {
+  switch (command) {
+    case 'account_offers':
+    case 'book_offers':
+      return 'offers';
+    default:
+      return undefined;
+  }
 }
 
 // prevent access to non-validated ledger versions
@@ -104,6 +123,49 @@ class RippleAPI extends EventEmitter {
       // tries to call a method that requires a connection
       this.connection = new RestrictedConnection(null, options)
     }
+  }
+
+  async request<K extends RippledCommand>(command: K, params: RippledCommandMap[K][0]): Promise<RippledCommandMap[K][1]>
+  async request(command: RippledCommand, params: Object) {
+    return this.connection.request({
+      ...params,
+      command
+    })
+  }
+
+  async requestAll<K extends RippledCommandReturnMany>(command: K, params: RippledCommandReturnManyMap[K][0]): Promise<RippledCommandReturnManyMap[K][1][]>
+  async requestAll(command: RippledCommandReturnMany, params: any, options: {collect?: string} = {}): Promise<any> {
+    // If limit wasn't provided, return a single request in the requestAll
+    // array format.
+    if (params.limit === undefined) {
+      return [await this.request(<any>command, params)]
+    }
+    // The data under collection is keyed based on the command. Fail if command
+    // not recognized and collection key not provided.
+    let collectKey = options.collect || getCollectKeyFromCommand(command)
+    console.log(command, collectKey);
+    if (!collectKey) {
+      throw new errors.ValidationError(`no collect key for command ${command}`)
+    }
+    const results = []
+    let count = 0
+    let countTo = params.limit
+    let marker = params.marker
+    let lastBatchLength
+    do {
+      const countRemaining = countTo - count
+      const repeatProps = {
+        ...params,
+        limit: countRemaining,
+        marker
+      }
+      const singleResult = await this.request(command, repeatProps)
+      marker = singleResult.marker
+      count += singleResult[collectKey].length
+      lastBatchLength = singleResult[collectKey].length
+      results.push(singleResult)
+    } while(!!marker && count < countTo && lastBatchLength !== 0)
+    return results
   }
 
   connect = connect

@@ -1,11 +1,6 @@
 
 import {Amount} from '../common/types'
 
-export type OrdersOptions = {
-  limit?: number,
-  ledgerVersion?: number
-}
-
 export type OrderSpecification = {
   direction: string,
   quantity: Amount,
